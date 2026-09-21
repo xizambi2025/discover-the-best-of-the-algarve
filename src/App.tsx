@@ -33,7 +33,7 @@ function Shell() {
       <footer className="site-footer">
         <p>Adventure, nature and the long Algarve afternoon.</p>
         <p className="fine">
-          Praia da Marinha and Benagil photographs via Wikimedia Commons. Films open on YouTube.
+          Photographs are taken from the Algarve activities flyer. Films open on YouTube.
         </p>
       </footer>
     </>

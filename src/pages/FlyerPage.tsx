@@ -106,7 +106,7 @@ export default function FlyerPage() {
   return (
     <div className="flyer">
       <section className="hero">
-        <img src="/photos/hero.jpg" alt="Praia da Marinha, limestone cliffs above a sandy cove" />
+        <img src="/photos/flyer/hero.jpg" alt="Limestone cliffs and turquoise water from the Algarve flyer" />
         <div className="hero-copy">
           <p className="kicker">Discover the</p>
           <h1>
