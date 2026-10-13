@@ -12,7 +12,9 @@ export type Messages = {
   skip: string;
   brand: string;
   navWater: string;
-  navHorse: string;
+  navLand: string;
+  navAir: string;
+  navActivities: string;
   navBook: string;
   navAbout: string;
   navContact: string;
@@ -112,8 +114,10 @@ export type Messages = {
 const en: Messages = {
   skip: "Skip to content",
   brand: "Discover the Best of the Algarve",
-  navWater: "On the water",
-  navHorse: "Horse riding",
+  navWater: "On water",
+  navLand: "On land",
+  navAir: "On air",
+  navActivities: "Activities",
   navBook: "Book experiences",
   navAbout: "About us",
   navContact: "Contact us",
@@ -270,8 +274,10 @@ const en: Messages = {
 const pt: Messages = {
   skip: "Saltar para o conteúdo",
   brand: "Discover the Best of the Algarve",
-  navWater: "No mar",
-  navHorse: "A cavalo",
+  navWater: "Na água",
+  navLand: "Em terra",
+  navAir: "No ar",
+  navActivities: "Atividades",
   navBook: "Reservar experiências",
   navAbout: "Sobre nós",
   navContact: "Contactos",
@@ -430,7 +436,9 @@ const fr: Messages = {
   skip: "Aller au contenu",
   brand: "Discover the Best of the Algarve",
   navWater: "Sur l’eau",
-  navHorse: "À cheval",
+  navLand: "Sur terre",
+  navAir: "En l’air",
+  navActivities: "Activités",
   navBook: "Réserver",
   navAbout: "À propos",
   navContact: "Contact",
