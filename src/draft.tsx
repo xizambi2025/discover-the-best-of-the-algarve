@@ -7,15 +7,13 @@ import {
   type ReactNode,
 } from "react";
 import { useSearchParams } from "react-router-dom";
-import {
-  findActivity,
-  rangesOverlap,
-  type Activity,
-  type TimeRange,
-} from "./data/catalog";
+import { rangesOverlap, type Activity, type TimeRange } from "./data/catalog";
+import { useLocale } from "./i18n";
+import { isEmail, isPhone } from "./validate";
 
 export type DraftLine = {
   activityId: string;
+  date: string;
   people: number;
   ranges: TimeRange[];
 };
@@ -26,21 +24,34 @@ export type Guest = {
   phone: string;
   date: string;
   notes: string;
+  acceptedTerms: boolean;
 };
+
+export type NoticeCode = "overlap" | "order" | "overlap-range";
+
+export type SubmitError =
+  | { ok: false; code: "name" | "email" | "email-format" | "phone" | "activity" | "terms" }
+  | { ok: false; code: "date" | "time"; activityId: string };
 
 export type SavedLine = DraftLine & { title: string };
 
-export type SavedBooking = {
-  ref: string;
-  createdAt: string;
-  guest: Guest;
+export type RequestPayload = {
+  name: string;
+  email: string;
+  phone: string;
+  notes: string;
+  acceptedTerms: true;
   lines: SavedLine[];
 };
 
-const DRAFT_KEY = "algarve-day-draft";
-const BOOKINGS_KEY = "algarve-bookings";
-
-const emptyGuest: Guest = { name: "", email: "", phone: "", date: "", notes: "" };
+const emptyGuest: Guest = {
+  name: "",
+  email: "",
+  phone: "",
+  date: "",
+  notes: "",
+  acceptedTerms: false,
+};
 
 type DraftState = {
   guest: Guest;
@@ -49,71 +60,40 @@ type DraftState = {
   isSelected: (id: string) => boolean;
   toggleActivity: (activity: Activity) => void;
   setPeople: (id: string, people: number) => void;
-  togglePeriod: (id: string, range: TimeRange) => string | null;
-  addCustomRange: (id: string, range: TimeRange) => string | null;
+  setDate: (id: string, date: string) => void;
+  togglePeriod: (id: string, range: TimeRange) => NoticeCode | null;
+  addCustomRange: (id: string, range: TimeRange) => NoticeCode | null;
   removeRange: (id: string, index: number) => void;
-  submit: () => { ok: true; booking: SavedBooking } | { ok: false; error: string };
-  bookings: SavedBooking[];
-  latestRef: string | null;
-  clearLatest: () => void;
+  prepare: () => { ok: true; payload: RequestPayload } | SubmitError;
+  clearStay: () => void;
 };
 
 const DraftContext = createContext<DraftState | null>(null);
 
-function loadDraft(): { guest: Guest; lines: DraftLine[] } {
-  try {
-    const raw = sessionStorage.getItem(DRAFT_KEY);
-    if (!raw) return { guest: emptyGuest, lines: [] };
-    const parsed = JSON.parse(raw) as { guest?: Guest; lines?: DraftLine[] };
-    return {
-      guest: { ...emptyGuest, ...parsed.guest },
-      lines: Array.isArray(parsed.lines) ? parsed.lines : [],
-    };
-  } catch {
-    return { guest: emptyGuest, lines: [] };
-  }
-}
-
-function loadBookings(): SavedBooking[] {
-  try {
-    const raw = localStorage.getItem(BOOKINGS_KEY);
-    const parsed = raw ? (JSON.parse(raw) as SavedBooking[]) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function makeRef(): string {
-  const chunk = Math.random().toString(36).slice(2, 6).toUpperCase();
-  return `ALG-${chunk}`;
-}
-
 export function DraftProvider({ children }: { children: ReactNode }) {
   const [searchParams] = useSearchParams();
-  const initial = loadDraft();
-  const [guest, setGuestState] = useState<Guest>(initial.guest);
-  const [lines, setLines] = useState<DraftLine[]>(initial.lines);
-  const [bookings, setBookings] = useState<SavedBooking[]>(loadBookings);
-  const [latestRef, setLatestRef] = useState<string | null>(null);
+  const { categories } = useLocale();
+  const [guest, setGuestState] = useState<Guest>(emptyGuest);
+  const [lines, setLines] = useState<DraftLine[]>([]);
 
   useEffect(() => {
-    sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ guest, lines }));
-  }, [guest, lines]);
+    sessionStorage.removeItem("algarve-day-draft");
+    localStorage.removeItem("algarve-bookings");
+  }, []);
 
   const requested = searchParams.get("activity");
   useEffect(() => {
     if (!requested) return;
-    const activity = findActivity(requested);
+    const activity = categories.flatMap((category) => category.activities).find((item) => item.id === requested);
     if (!activity) return;
     setLines((current) => {
       if (current.some((line) => line.activityId === activity.id)) return current;
       return [
         ...current,
-        { activityId: activity.id, people: 2, ranges: [{ ...activity.suggested }] },
+        { activityId: activity.id, date: "", people: 2, ranges: [{ ...activity.suggested }] },
       ];
     });
-  }, [requested]);
+  }, [requested, categories]);
 
   const api = useMemo<DraftState>(() => {
     const replaceLine = (id: string, next: DraftLine) => {
@@ -123,9 +103,6 @@ export function DraftProvider({ children }: { children: ReactNode }) {
     return {
       guest,
       lines,
-      bookings,
-      latestRef,
-      clearLatest: () => setLatestRef(null),
       setGuest: (patch) => setGuestState((current) => ({ ...current, ...patch })),
       isSelected: (id) => lines.some((line) => line.activityId === id),
       toggleActivity: (activity) => {
@@ -135,7 +112,7 @@ export function DraftProvider({ children }: { children: ReactNode }) {
           }
           return [
             ...current,
-            { activityId: activity.id, people: 2, ranges: [{ ...activity.suggested }] },
+            { activityId: activity.id, date: "", people: 2, ranges: [{ ...activity.suggested }] },
           ];
         });
       },
@@ -143,6 +120,11 @@ export function DraftProvider({ children }: { children: ReactNode }) {
         const line = lines.find((item) => item.activityId === id);
         if (!line) return;
         replaceLine(id, { ...line, people: Math.min(16, Math.max(1, people)) });
+      },
+      setDate: (id, date) => {
+        const line = lines.find((item) => item.activityId === id);
+        if (!line) return;
+        replaceLine(id, { ...line, date });
       },
       togglePeriod: (id, range) => {
         const line = lines.find((item) => item.activityId === id);
@@ -158,17 +140,17 @@ export function DraftProvider({ children }: { children: ReactNode }) {
           return null;
         }
         if (line.ranges.some((item) => rangesOverlap(item, range))) {
-          return "That period overlaps a time you already chose.";
+          return "overlap";
         }
         replaceLine(id, { ...line, ranges: [...line.ranges, range] });
         return null;
       },
       addCustomRange: (id, range) => {
-        if (range.end <= range.start) return "The end time needs to be after the start.";
+        if (range.end <= range.start) return "order";
         const line = lines.find((item) => item.activityId === id);
         if (!line) return null;
         if (line.ranges.some((item) => rangesOverlap(item, range))) {
-          return "That range overlaps a time already on this activity.";
+          return "overlap-range";
         }
         replaceLine(id, { ...line, ranges: [...line.ranges, range] });
         return null;
@@ -181,37 +163,43 @@ export function DraftProvider({ children }: { children: ReactNode }) {
           ranges: line.ranges.filter((_, itemIndex) => itemIndex !== index),
         });
       },
-      submit: () => {
-        const name = guest.name.trim();
-        if (name.length < 2) return { ok: false, error: "Add the name the booking should be under." };
-        if (!guest.date) return { ok: false, error: "Choose the day you want to come." };
-        if (guest.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(guest.email.trim())) {
-          return { ok: false, error: "That email address does not look complete." };
-        }
-        if (lines.length === 0) return { ok: false, error: "Tick at least one activity." };
-        const missing = lines.find((line) => line.ranges.length === 0);
-        if (missing) {
-          const title = findActivity(missing.activityId)?.title ?? "An activity";
-          return { ok: false, error: `${title} still needs a time.` };
-        }
-        const saved: SavedBooking = {
-          ref: makeRef(),
-          createdAt: new Date().toISOString(),
-          guest: { ...guest, name, email: guest.email.trim(), phone: guest.phone.trim() },
-          lines: lines.map((line) => ({
-            ...line,
-            title: findActivity(line.activityId)?.title ?? line.activityId,
-          })),
-        };
-        const next = [saved, ...bookings].slice(0, 12);
-        localStorage.setItem(BOOKINGS_KEY, JSON.stringify(next));
-        setBookings(next);
+      clearStay: () => {
         setLines([]);
-        setLatestRef(saved.ref);
-        return { ok: true, booking: saved };
+        setGuestState((current) => ({ ...current, notes: "", acceptedTerms: false }));
+      },
+      prepare: () => {
+        const name = guest.name.trim();
+        const email = guest.email.trim();
+        const phone = guest.phone.trim();
+        if (name.length < 2) return { ok: false, code: "name" };
+        if (!email) return { ok: false, code: "email" };
+        if (!isEmail(email)) return { ok: false, code: "email-format" };
+        if (!isPhone(phone)) return { ok: false, code: "phone" };
+        if (lines.length === 0) return { ok: false, code: "activity" };
+        const undated = lines.find((line) => !line.date);
+        if (undated) return { ok: false, code: "date", activityId: undated.activityId };
+        const missing = lines.find((line) => line.ranges.length === 0);
+        if (missing) return { ok: false, code: "time", activityId: missing.activityId };
+        if (!guest.acceptedTerms) return { ok: false, code: "terms" };
+        return {
+          ok: true,
+          payload: {
+            name,
+            email,
+            phone,
+            notes: guest.notes.trim(),
+            acceptedTerms: true,
+            lines: lines.map((line) => ({
+              ...line,
+              title:
+                categories.flatMap((category) => category.activities).find((item) => item.id === line.activityId)
+                  ?.title ?? line.activityId,
+            })),
+          },
+        };
       },
     };
-  }, [guest, lines, bookings, latestRef]);
+  }, [categories, guest, lines]);
 
   return <DraftContext.Provider value={api}>{children}</DraftContext.Provider>;
 }

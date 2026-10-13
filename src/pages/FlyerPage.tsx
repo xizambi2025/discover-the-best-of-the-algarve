@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { categories, youtubeUrl, type Activity } from "../data/catalog";
+import { hasFilm, watchUrl, type Activity } from "../data/catalog";
 import { useDraft } from "../draft";
+import { useLocale } from "../i18n";
 
 function VideoDialog({
   activity,
@@ -11,6 +12,7 @@ function VideoDialog({
   onClose: () => void;
 }) {
   const { isSelected } = useDraft();
+  const { m } = useLocale();
 
   useEffect(() => {
     if (!activity) return;
@@ -40,27 +42,47 @@ function VideoDialog({
         onClick={(event) => event.stopPropagation()}
       >
         <div className="frame">
-          <iframe
-            src={`https://www.youtube-nocookie.com/embed/${activity.videoId}?rel=0&start=${start}`}
-            title={activity.videoTitle}
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
+          {activity.videoId ? (
+            <iframe
+              src={`https://www.youtube-nocookie.com/embed/${activity.videoId}?rel=0&start=${start}`}
+              title={activity.videoTitle}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+            />
+          ) : (
+            <iframe
+              src={`https://www.facebook.com/plugins/video.php?href=${encodeURIComponent(activity.videoUrl ?? "")}&show_text=false&width=1280`}
+              title={activity.videoTitle}
+              allow="autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          )}
         </div>
         <div className="dialog-copy">
           <p className="eyebrow">{activity.duration}</p>
           <h2 id="video-title">{activity.title}</h2>
           <p>{activity.blurb}</p>
-          <p className="film-name">Film: {activity.videoTitle}</p>
+          {activity.offers && (
+            <ul className="offers">
+              {activity.offers.map((offer) => (
+                <li key={offer}>{offer}</li>
+              ))}
+            </ul>
+          )}
+          <p className="film-name">
+            {m.filmBy}: {activity.videoTitle}
+          </p>
           <div className="dialog-actions">
             <Link className="solid" to={`/book?activity=${activity.id}`} onClick={onClose}>
-              {selected ? "Open your day" : "Add to your day"}
+              {selected ? m.openDay : m.includeDay}
             </Link>
-            <a className="ghost" href={youtubeUrl(activity)} target="_blank" rel="noreferrer">
-              Watch on YouTube
-            </a>
+            {watchUrl(activity) && (
+              <a className="ghost" href={watchUrl(activity)} target="_blank" rel="noreferrer">
+                {m.watch}
+              </a>
+            )}
             <button type="button" className="texty" onClick={onClose}>
-              Close
+              {m.close}
             </button>
           </div>
         </div>
@@ -77,23 +99,38 @@ function ActivityCard({
   onWatch: (activity: Activity) => void;
 }) {
   const { isSelected, toggleActivity } = useDraft();
+  const { m } = useLocale();
   const selected = isSelected(activity.id);
   return (
     <article className="card">
-      <button type="button" className="shot" onClick={() => onWatch(activity)}>
-        <img src={activity.image} alt={activity.imageAlt} />
-        <span className="play">Watch</span>
-        <span className="cap">{activity.title}</span>
-      </button>
+      {hasFilm(activity) ? (
+        <button type="button" className="shot" onClick={() => onWatch(activity)}>
+          <img src={activity.image} alt={activity.imageAlt} />
+          <span className="play">{m.film}</span>
+        </button>
+      ) : (
+        <div className="shot still">
+          <img src={activity.image} alt={activity.imageAlt} />
+        </div>
+      )}
       <div className="card-foot">
+        <p className="meta">{activity.duration}</p>
+        <h3>{activity.title}</h3>
         <p>{activity.blurb}</p>
+        {activity.offers && (
+          <ul className="offers">
+            {activity.offers.map((offer) => (
+              <li key={offer}>{offer}</li>
+            ))}
+          </ul>
+        )}
         <button
           type="button"
           className={selected ? "mini on" : "mini"}
           aria-pressed={selected}
           onClick={() => toggleActivity(activity)}
         >
-          {selected ? "In your day" : "Add to day"}
+          {selected ? m.included : m.include}
         </button>
       </div>
     </article>
@@ -102,34 +139,28 @@ function ActivityCard({
 
 export default function FlyerPage() {
   const [watching, setWatching] = useState<Activity | null>(null);
+  const { m, categories } = useLocale();
 
   return (
     <div className="flyer">
       <section className="hero">
-        <img src="/photos/flyer/hero.jpg" alt="Limestone cliffs and turquoise water from the Algarve flyer" />
+        <div className="hero-media">
+          <img src="/photos/hero.jpg" alt={m.heroAlt} />
+        </div>
         <div className="hero-copy">
-          <p className="kicker">Discover the</p>
+          <p className="kicker">{m.heroKicker}</p>
           <h1>
-            Best of the <span>Algarve!</span>
+            {m.heroTitle}
+            <span>{m.heroItalic}</span>
           </h1>
-          <p className="tags">Adventure · Nature · Culture · Relaxation</p>
-          <p className="lede">
-            Unforgettable experiences for everyone. Watch a short film for each activity, then build
-            the day — who is coming, and when.
-          </p>
+          <p className="tags">{m.heroTags}</p>
+          <p className="lede">{m.heroLede}</p>
           <div className="hero-actions">
             <Link className="solid" to="/book">
-              Plan your day
+              {m.heroCta}
             </Link>
-            <a className="ghost light" href="#horse">
-              Horse riding is new
-            </a>
           </div>
         </div>
-        <p className="badge">
-          Activities
-          <strong>& tours on the Algarve coast</strong>
-        </p>
       </section>
 
       {categories.map((category) => (
@@ -156,16 +187,16 @@ export default function FlyerPage() {
       ))}
 
       <section className="promise">
-        <h2>Make your holiday extraordinary</h2>
+        <h2>{m.promiseTitle}</h2>
         <ul>
-          <li>Experienced professionals</li>
-          <li>Safe and reliable</li>
-          <li>Flexible cancellation</li>
-          <li>Activities for all ages</li>
+          {m.promise.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
         </ul>
         <Link className="solid" to="/book">
-          Book the day
+          {m.promiseCta}
         </Link>
+        <p className="promise-note">{m.footer}</p>
       </section>
 
       <VideoDialog activity={watching} onClose={() => setWatching(null)} />
